@@ -127,6 +127,20 @@ void ISL94208::enableDischargeSetWrites(bool enable)
     writeRegister(ISL94208_REG_WRITEN, reg);
 }
 
+void ISL94208::enableTemp(bool enable = true)
+{
+    uint8_t reg = readRegister(ISL94208_REG_FEATSET);
+    
+    if (enable) {
+        reg |= (1 << 5);
+    }
+    else {
+        reg &= ~(1 << 5);
+    }
+
+    writeRegister(ISL94208_REG_FEATSET, reg);
+}
+
 void ISL94208::selectAnalogOutput(uint8_t cell)
 {
     uint8_t reg = readRegister(ISL94208_REG_ANALOG);
@@ -165,6 +179,28 @@ void ISL94208::setOverCurrentDischargeThreshold(uint8_t threshold)
     writeRegister(ISL94208_REG_DISCHGSET, reg);
 }
 
+void ISL94208::setShortCircuitDischargeThreshold(uint8_t threshold)
+{
+    uint8_t reg = readRegister(ISL94208_REG_DISCHGSET);
+    reg &= ~0x0C;
+    reg |= threshold << 2;
+    writeRegister(ISL94208_REG_DISCHGSET, reg);
+}
+
+void ISL94208::enableShortCircuitDischargeControl(bool enable)
+{
+    uint8_t reg = readRegister(ISL94208_REG_DISCHGSET);
+
+    if (enable) {
+        reg |= (1 << 4);
+    }
+    else {
+        reg &= ~(1 << 4);
+    }
+
+    writeRegister(ISL94208_REG_DISCHGSET, reg);
+}
+
 uint8_t ISL94208::readSleepFlag()
 {
     uint8_t reg = readRegister(ISL94208_REG_FETCTRL);
@@ -175,4 +211,17 @@ uint8_t ISL94208::readWkupPolarity()
 {
     uint8_t reg = readRegister(ISL94208_REG_FEATSET);
     return ((reg & 0x01) == 0x01);
+}
+
+uint8_t ISL94208::readWkupFlag()
+{
+    uint8_t reg = readRegister(ISL94208_REG_CONFIG);
+    return ((reg & 0x10) == 0x10);
+}
+
+void ISL94208::disableAllCB()
+{
+    uint8_t reg = readRegister(ISL94208_REG_BAL);
+    reg &= ~(0x7E);
+    writeRegister(ISL94208_REG_BAL, reg);
 }

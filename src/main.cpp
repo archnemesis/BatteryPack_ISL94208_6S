@@ -27,10 +27,17 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <ISL94208.h>
+#include <math.h>
 
 #define ISL94208_ADDR 0x28
 
 #define DEBUG 1
+
+#define VIN 3.333
+#define TEMP_R1 46400
+#define TEMP_B 3988
+#define TEMP_T0 298.15
+#define TEMP_R0 10000
 
 #define PIN_LED_D3 3
 #define PIN_LED_D2 2
@@ -39,11 +46,12 @@
 #define PIN_ISL94208_AO A0
 #define PIN_CHARGE_IND A1
 #define PIN_DISCHARGE_IND A2
-#define PIN_CHARGER_CONN 4
 
 #define CONF_CHARGE_START_THRESHOLD 25.1  // don't start charge above this voltage
-#define CONF_CHARGE_CUTOFF_THRESH 25.2    // stop charging above this voltage
-#define CONF_SLEEP_TIMEOUT 2000           // put ISL94208 to sleep after this many millis
+#define CONF_CHARGE_CUTOFF_THRESH 25.2    // charge cutoff voltage
+#define CONF_DISCHARGE_CUTOFF_THRESH 15.6 // discharge cutoff voltage
+#define CONF_BAD_CELL_THRESH 2.0          // min cell voltage before pack shutdown
+#define CONF_SLEEP_TIMEOUT 9000           // put ISL94208 to sleep after this many millis
 #define CONF_BAL_CHARGE 1                 // balance cells on charge cycle
 #define CONF_BAL_DISCHARGE 0              // balance cells on discharge cycle
 #define CONF_OC_CHARGE_THRESH ISL94208_OC_CHG_THRESH_120MV
@@ -54,6 +62,8 @@ ISL94208 isl(ISL94208_ADDR);
 unsigned long int counter = 0;
 bool charger_connected = false;
 bool charge_started = false;
+bool shutoff = false;
+bool error_light = false;
 
 float adc2voltage(uint16_t adc)
 {
@@ -89,7 +99,6 @@ void setup() {
   pinMode(PIN_VPACK_ENABLE, OUTPUT);
   pinMode(PIN_CHARGE_IND, INPUT);
   pinMode(PIN_DISCHARGE_IND, INPUT);
-  pinMode(PIN_CHARGER_CONN, INPUT);
 
   digitalWrite(PIN_LED_D2, LOW);
   digitalWrite(PIN_LED_D3, LOW);
@@ -116,26 +125,27 @@ void setup() {
    */
   isl.enableChargeSetWrites(true);
   isl.setOverCurrentChargeThreshold(ISL94208_OC_CHG_THRESH_120MV);
-  isl.setOverCurrentDischargeThreshold(ISL94208_OC_CHG_THRESH_120MV);
   isl.enableChargeSetWrites(false);
+
+  isl.enableDischargeSetWrites(true);
+  isl.setOverCurrentDischargeThreshold(ISL94208_OC_CHG_THRESH_120MV);
+  isl.setShortCircuitDischargeThreshold(ISL94208_SHORT_CIRCUIT_THRESH_650MV);
+  isl.enableDischargeSetWrites(false);
   
+#ifdef DEBUG
   /*
    * Helpful to reset ISL94208 state when debugging.
    */
   isl.enableCFET(false);
   isl.enableDFET(false);
-  isl.enableCB(1, false);
-  isl.enableCB(2, false);
-  isl.enableCB(3, false);
-  isl.enableCB(4, false);
-  isl.enableCB(5, false);
-  isl.enableCB(6, false);
+  isl.disableAllCB();
   delay(100);
+#endif
 
   /*
    * Determine if the charger was present on wakeup
    */
-  charger_connected = digitalRead(PIN_CHARGER_CONN);
+  charger_connected = isl.readWkupFlag();
 
   expireTimeout();
 }
@@ -146,19 +156,16 @@ void loop() {
   float v_sensed = 0.0;
   float v_top = 0.0;
   float v_cell = 0.0;
+  float temperature = 0.0;
   uint8_t top_cell = 0;
+  uint16_t adc_val = 0;
 
-  digitalWrite(PIN_LED_D3, HIGH);
+  digitalWrite((error_light == true ? PIN_LED_D2 : PIN_LED_D3), HIGH);
   delay(100);
-  digitalWrite(PIN_LED_D3, LOW);
+  digitalWrite((error_light == true ? PIN_LED_D2 : PIN_LED_D3), LOW);
   delay(100);         
 
-  isl.enableCB(1, false);
-  isl.enableCB(2, false);
-  isl.enableCB(3, false);
-  isl.enableCB(4, false);
-  isl.enableCB(5, false);
-  isl.enableCB(6, false);
+  isl.disableAllCB();
   delay(100);
 
   for (uint8_t i = 1; i < 7; i++) {
@@ -174,6 +181,10 @@ void loop() {
     Serial.println(v_cell);
 #endif
 
+    if (v_cell < CONF_BAD_CELL_THRESH) {
+      // shut down FETs, show error light, sleep
+    }
+
     v_pack += v_cell;
 
     if (v_cell > v_top) {
@@ -181,6 +192,18 @@ void loop() {
       v_top = v_cell;
     }
   }
+
+  isl.selectAnalogOutput(8);
+  delay(100);
+  adc_val = analogRead(PIN_ISL94208_AO);
+  float adc_volts = VIN / 1024.0;
+  float resistance = (TEMP_R1 * (adc_volts * adc_val)) / (VIN - adc_volts);
+  temperature = ((TEMP_T0 * TEMP_B) / (TEMP_T0 * log(resistance/TEMP_R0) + TEMP_B)) - 273.15;
+
+#ifdef DEBUG
+  Serial.print("Temperature: ");
+  Serial.println(temperature);
+#endif
 
   isl.selectAnalogOutput(0);
 
@@ -217,6 +240,7 @@ void loop() {
           Serial.println(top_cell);
 #endif
         }
+        expireTimeout();
       }
       else {
         /*
@@ -224,11 +248,8 @@ void loop() {
         */
         isl.enableCFET(false);
         isl.enableDFET(false);
-
         delay(100);
       }
-
-      expireTimeout();
     }
     else {
 #ifdef DEBUG
@@ -244,46 +265,75 @@ void loop() {
           isl.enableCFET(true);
           isl.enableDFET(true);
           delay(100);
+          expireTimeout();
+          charge_started = true;
         }
-
-        expireTimeout();
-        charge_started = true;
       }
-
     }
   }
   /* DISCHARGING */
   else if (digitalRead(PIN_DISCHARGE_IND)) {
+    if (v_pack < CONF_DISCHARGE_CUTOFF_THRESH) {
 #ifdef DEBUG
-    Serial.println("Discharge State: Discharging");
+      Serial.println("Discharge State: Shutdown (discharge threshold)");
 #endif
 
-    /*
-     * There is a load so keep looping while it is
-     * drawing current.
-     */
-    expireTimeout();
+      isl.enableCFET(false);
+      isl.enableDFET(false);
+      shutoff = true;
+      error_light = true;
+      delay(100);
+    }
+    else {
+#ifdef DEBUG
+      Serial.println("Discharge State: Discharging");
+#endif
+
+      if (top_cell > 0 && CONF_BAL_DISCHARGE == 1) {
+        isl.enableCB(top_cell, true);
+#ifdef DEBUG
+        Serial.print("Enabling CB for cell ");
+        Serial.println(top_cell);
+#endif
+      }
+
+      /*
+      * There is a load so keep looping while it is
+      * drawing current.
+      */
+      expireTimeout();
+    }
   }
-  else {
+  else if (shutoff == false) {
 #ifdef DEBUG
     Serial.println("Discharge State: Load Test");
 #endif
 
-    /*
-     * Disable CFET and enable DFET, if there is a load
-     * then the discharge pin will be pulled high and
-     * keep the loop going.
-     */
-    isl.enableCFET(false);
-    isl.enableDFET(true);
+    if (v_pack > CONF_DISCHARGE_CUTOFF_THRESH) {
+      /*
+      * Disable CFET and enable DFET, if there is a load
+      * then the discharge pin will be pulled high and
+      * keep the loop going.
+      */
+      isl.enableCFET(false);
+      isl.enableDFET(true);
 
-    delay(100);
+      delay(100);
+    }
+    else {
+#ifdef DEBUG
+      Serial.println("Discharge State: Under-volt Lockout");
+      shutoff = true;
+      error_light = true;
+#endif
+    }
   }
 
   if ((millis() - counter) > CONF_SLEEP_TIMEOUT) {
 #ifdef DEBUG
     Serial.println("Timed out, sleeping...");
 #endif
+    delay(1000);
     isl.sleep();
   }
 }
