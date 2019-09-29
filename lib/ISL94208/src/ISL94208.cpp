@@ -127,7 +127,7 @@ void ISL94208::enableDischargeSetWrites(bool enable)
     writeRegister(ISL94208_REG_WRITEN, reg);
 }
 
-void ISL94208::enableTemp(bool enable = true)
+void ISL94208::enableTemp(bool enable)
 {
     uint8_t reg = readRegister(ISL94208_REG_FEATSET);
     
@@ -149,10 +149,17 @@ void ISL94208::selectAnalogOutput(uint8_t cell)
     writeRegister(ISL94208_REG_ANALOG, reg);
 }
 
-void ISL94208::sleep()
+void ISL94208::sleep(bool enable)
 {
     uint8_t reg = readRegister(ISL94208_REG_FETCTRL);
-    reg |= 0x80;
+
+    if (enable) {
+        reg |= 0x80;
+    }
+    else {
+        reg &= ~0x80;
+    }
+    
     writeRegister(ISL94208_REG_FETCTRL, reg);
 }
 
@@ -217,6 +224,110 @@ uint8_t ISL94208::readWkupFlag()
 {
     uint8_t reg = readRegister(ISL94208_REG_CONFIG);
     return ((reg & 0x10) == 0x10);
+}
+
+uint8_t ISL94208::readDischargeOCFlag()
+{
+    uint8_t reg = readRegister(ISL94208_REG_OPSTATUS);
+    return ((reg & 0x02) == 0x02);
+}
+
+uint8_t ISL94208::readDischargeShortCircuitFlag()
+{
+    uint8_t reg = readRegister(ISL94208_REG_OPSTATUS);
+    return ((reg & 0x03) == 0x03);
+}
+
+uint8_t ISL94208::readChargeOCFlag()
+{
+    uint8_t reg = readRegister(ISL94208_REG_OPSTATUS);
+    return ((reg & 0x01) == 0x01);
+}
+
+uint8_t ISL94208::readLDFailFlag()
+{
+    uint8_t reg = readRegister(ISL94208_REG_OPSTATUS);
+    return ((reg & 0x04) == 0x04);
+}
+
+uint8_t ISL94208::readUserFlag0()
+{
+    uint8_t reg = readRegister(ISL94208_REG_ANALOG);
+    return ((reg & 0x40) == 0x40);
+}
+
+uint8_t ISL94208::readUserFlag1()
+{
+    uint8_t reg = readRegister(ISL94208_REG_ANALOG);
+    return ((reg & 0x80) == 0x80);
+}
+
+uint8_t ISL94208::readUserFlag2()
+{
+    uint8_t reg = readRegister(ISL94208_REG_WRITEN);
+    return ((reg & 0x08) == 0x08);
+}
+
+uint8_t ISL94208::readUserFlag3()
+{
+    uint8_t reg = readRegister(ISL94208_REG_WRITEN);
+    return ((reg & 0x10) == 0x10);
+}
+
+void ISL94208::setUserFlag0(bool set)
+{
+    uint8_t reg = readRegister(ISL94208_REG_ANALOG);
+
+    if (set) {
+        reg |= 0x40;
+    }
+    else {
+        reg &= ~0x40;
+    }
+
+    writeRegister(ISL94208_REG_ANALOG, reg);
+}
+
+void ISL94208::setUserFlag1(bool set)
+{
+    uint8_t reg = readRegister(ISL94208_REG_ANALOG);
+
+    if (set) {
+        reg |= 0x80;
+    }
+    else {
+        reg &= ~0x80;
+    }
+
+    writeRegister(ISL94208_REG_ANALOG, reg);
+}
+
+void ISL94208::setUserFlag2(bool set)
+{
+    uint8_t reg = readRegister(ISL94208_REG_WRITEN);
+
+    if (set) {
+        reg |= 0x08;
+    }
+    else {
+        reg &= ~0x08;
+    }
+
+    writeRegister(ISL94208_REG_WRITEN, reg);
+}
+
+void ISL94208::setUserFlag3(bool set)
+{
+    uint8_t reg = readRegister(ISL94208_REG_WRITEN);
+
+    if (set) {
+        reg |= 0x10;
+    }
+    else {
+        reg &= ~0x10;
+    }
+
+    writeRegister(ISL94208_REG_WRITEN, reg);
 }
 
 void ISL94208::disableAllCB()

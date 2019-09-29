@@ -35,9 +35,12 @@ public:
     void enableChargeSetWrites(bool enable = true);
     void enableDischargeSetWrites(bool enable = true);
     void enableTemp(bool enable = true);
-    void setUserFlags(uint8_t flags);
+    void setUserFlag0(bool set = true);
+    void setUserFlag1(bool set = true);
+    void setUserFlag2(bool set = true);
+    void setUserFlag3(bool set = true);
     void selectAnalogOutput(uint8_t cell);
-    void sleep();
+    void sleep(bool enable = true);
     void setOverCurrentChargeThreshold(uint8_t threshold);
     void setOverCurrentDischargeThreshold(uint8_t threshold);
     void setShortCircuitDischargeThreshold(uint8_t threshold);
@@ -46,6 +49,14 @@ public:
     uint8_t readWkupPolarity();
     uint8_t readWkupFlag();
     uint8_t readRegister(uint8_t addr);
+    uint8_t readDischargeOCFlag();
+    uint8_t readChargeOCFlag();
+    uint8_t readDischargeShortCircuitFlag();
+    uint8_t readLDFailFlag();
+    uint8_t readUserFlag0();
+    uint8_t readUserFlag1();
+    uint8_t readUserFlag2();
+    uint8_t readUserFlag3();
     void writeRegister(uint8_t addr, uint8_t value);
     uint8_t readCheckBit();
 private:
